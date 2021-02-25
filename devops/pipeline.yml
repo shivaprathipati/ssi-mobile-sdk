@@ -1,0 +1,83 @@
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - develop
+      - feature/setup-ci
+
+resources:
+- repo: self
+
+pool:
+  vmImage: ubuntu-20.04
+
+variables:
+- name: 'gradleWrapperFile'
+  value: 'gradlew'
+- name: 'artifactPublishFeed'
+  value: '844bdbc0-4fc1-40a0-b67a-d274021ce496/82e5aac8-9d32-4828-8a3d-7299ee27da25'
+- name: 'artifactName'
+  value: 'ssi-mobile-sdk'
+- name: 'artifactVersion'
+  value: '$(Build.BuildNumber)'
+
+stages:
+- stage: build
+  displayName: 'build'
+  jobs:  
+  - job: buildJar
+    steps:
+    - task: Gradle@2
+      displayName: 'build jar'
+      inputs:
+        gradleWrapperFile: '$(gradleWrapperFile)'
+        tasks: 'clean jvmJar'
+    - task: CopyFiles@2
+      displayName: 'copy jar files'
+      inputs:
+        contents: 'build/libs/kotlin-multiplatform-agent-jvm*.jar'
+        targetFolder: '$(build.artifactStagingDirectory)'
+        flattenFolders: true
+    - task: PublishBuildArtifacts@1
+      displayName: 'publish artifacts'
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)'
+  - job: buildAar
+    steps:
+    - task: Gradle@2
+      displayName: 'build android aar'
+      inputs:
+        gradleWrapperFile: '$(gradleWrapperFile)'
+        tasks: 'clean build -x lint'
+    - task: CopyFiles@2
+      displayName: 'copy aar files'
+      inputs:
+        contents: '**/*.aar'
+        targetFolder: '$(Build.ArtifactStagingDirectory)'
+        flattenFolders: true
+    - task: PublishBuildArtifacts@1
+      displayName: 'publish artifacts'
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)'
+
+- stage: publish
+  dependsOn: build  
+  displayName: 'publish'
+  jobs:
+  - job: publishPackage
+    steps:
+    - checkout: none
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        path: '$(Pipeline.Workspace)'
+    - task: UniversalPackages@0
+      displayName: 'publish packages'
+      inputs:
+        command: publish
+        publishDirectory: '$(Pipeline.Workspace)'
+        vstsFeedPublish: '$(artifactPublishFeed)'
+        vstsFeedPackagePublish: '$(artifactName)'
+        versionOption: custom
+        versionPublish: '$(artifactVersion)'
+        packagePublishDescription: '$(artifactName)'
